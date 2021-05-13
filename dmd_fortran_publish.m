@@ -24,7 +24,7 @@ modes = Qx * evecK;
 %% Now we shall reconstruct the velocities from modes and evals
 str="istep_";
 count=0;
-for n=1:15       % from timestep 100,000 to 140,000 
+for n=1:15       % from timestep 100,000 to 115,000 
 count=count+1;
 append_x=sprintf('%6.0f',n*100000);
 for i=1:length(append_x)
