@@ -1,0 +1,27 @@
+[GENERAL]
+
+numSteps=50000
+dt = 0.1
+writeInterval = 2000
+
+[PROBLEMTYPE]
+equation = incompNS
+
+
+[MESH]
+numberOfBCFields = 1
+
+
+[PRESSURE]
+residualTol = 1e-06
+residualProj = no
+
+
+[VELOCITY]
+residualTol = 1e-08
+density = 988.04
+viscosity = 2.634773E-03
+       
+
+
+

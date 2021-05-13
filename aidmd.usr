@@ -1,0 +1,1075 @@
+C-----------------------------------------------------------------------
+C  nek5000 user-file template
+C
+C  user specified routines:
+C     - userbc : boundary conditions
+C     - useric : initial conditions
+C     - uservp : variable properties
+C     - userf  : local acceleration term for fluid
+C     - userq  : local source term for scalars
+C     - userchk: general purpose routine for checking errors etc.
+C
+C-----------------------------------------------------------------------
+      subroutine uservp(ix,iy,iz,eg) ! set variable properties
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userf(ix,iy,iz,eg) ! set acceleration term
+c
+c     Note: this is an acceleration term, NOT a force!
+c     Thus, ffx will subsequently be multiplied by rho(x,t).
+c
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      ffx=0.
+      ffy=0.
+      ffz=0.
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userq(ix,iy,iz,eg) ! set source term
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      qvol   = 0.0
+      source = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userbc(ix,iy,iz,f,eg) ! set up boundary conditions
+
+c     NOTE: This routine may or may not be called by every processor
+
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine useric(ix,iy,iz,eg) ! set up initial conditions
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userchk()
+      include 'SIZE'
+      include 'TOTAL'
+
+      PARAMETER(npros=64)
+
+
+      integer ielv(npros),work(npros),j,telv,ntots,index,rmax
+      integer count,commenc,termin
+      real,ALLOCATABLE::snap(:)
+      real snapx(linterpol*ldim,1),snapy(linterpol*ldim,1)
+      real work1(linterpol*ldim)
+      SAVE snapx,snapy,ielv
+      real wrk(lelt*lx1*ly1*lz1,3)
+      integer ihandle
+
+      common /dmd/ ntots,telv
+      common /dmd_count/ count
+      common /dmd_interpolation/uvw(linterpol,ldim)
+
+      character*80 fnames(4)
+      character*18 str_istep,file_name
+
+      parameter(nfldm=ldim)
+
+
+c     Restart code section
+c      call blank(fnames,4*80)
+c      fnames(1)='aidmd0.f000r1'
+c      fnames(2)='aidmd0.f000r2'
+c      fnames(3)='aidmd0.f000r3'
+c      fnames(4)='aidmd0.f000r4'
+
+c      call full_restart(fnames,4)
+
+c       if (istep.lt.79995) then
+c       iostep=2000
+c       elseif ((istep.ge.79995).AND.(istep.lt.80000)) then
+c       iostep=1
+c       else
+c       iostep=0
+c       endif
+
+
+
+      commenc=1000      !time-step at which DMD process will commence
+      termin=6000      !time-step at which DMD process will terminate
+
+
+      ntots=linterpol*3   ! Total number of data points
+      allocate(snap(ntots))
+
+c      print *, ntots,linterpol, "ntots,linterpol"
+
+       if (istep.gt.termin) then
+       if (mod(istep,1000).eq.0) then
+       print *, "collecting data for prediction check"
+       ifpo=.false.
+       call interpolation()
+       do j=1,ntots
+        snap(j)=0            !Flushing the snap array
+       enddo
+       if (nid.eq.0) then
+               do j=1,linterpol
+               snap(j)=uvw(j,1)         !uvw values are brought by common block
+               snap((linterpol)+j)=uvw(j,2)
+               snap((linterpol*2)+j)=uvw(j,3)
+               enddo
+               
+      
+      write(str_istep,'(i6.6)') istep
+      file_name= 'istep_' // str_istep
+      file_name= trim(file_name)
+
+      open(unit=20,file=file_name,status='replace')
+      do j=1,ntots
+        write(20,*) snap(j)
+      enddo
+      close(20)
+      endif
+      endif
+      endif
+
+
+
+      if ((istep.ge.commenc).AND.(istep.le.termin)) then
+
+c      print *, "commenc started", istep
+
+      ifpo=.false.          !not to interpolate pressure values
+c      print *, "ifpo", ifpo
+c      print *, "ifto", ifto
+
+      call interpolation()      !Subroutine present inside postpro file in core
+
+      do j=1,ntots
+       snap(j)=0            !Flushing the snap array
+      enddo
+
+c      print *, "snap flushed"
+
+       if (nid.eq.0) then
+        do j=1,linterpol
+           snap(j)=uvw(j,1)         !uvw values are brought by common block
+           snap((linterpol)+j)=uvw(j,2)
+           snap((linterpol*2)+j)=uvw(j,3)
+        enddo
+
+       print *, "snap packed with valocity data"
+
+c      open(unit=20,file='uvw.dat',status='replace')
+c      do j=1,ntots
+c        write(20,*) snap(j)
+c      enddo
+c      close(20)
+
+
+
+c       if (istep.lt.79995) then
+c       iostep=0
+c       elseif ((istep.ge.79995).AND.(istep.lt.80001)) then
+c       iostep=1
+c       else
+c       iostep=0
+c       endif
+
+
+      if (istep.eq.commenc) then
+      open(unit=20,file='istep_commenc.dat',status='replace')
+      do j=1,ntots
+        write(20,*) snap(j)
+      enddo
+      close(20)
+      endif
+
+
+      if (istep.eq.termin) then
+      open(unit=20,file='istep_termin.dat',status='replace')
+      do j=1,ntots
+        write(20,*) snap(j)
+      enddo
+      close(20)
+      endif
+
+
+
+      if (mod(istep,1000).eq.0) then
+
+      write(str_istep,'(i6.6)') istep
+      file_name= 'istep_' // str_istep
+      file_name= trim(file_name)
+
+      open(unit=20,file=file_name,status='replace')
+      do j=1,ntots
+        write(20,*) snap(j)
+      enddo
+      close(20)
+      endif
+
+
+
+
+      do j=1,ntots
+       snapy(j,1)=snap(j)
+      enddo
+
+      print *, "snapy successfully"
+
+      if (istep.eq.(commenc+1)) then
+      count=1
+      elseif (istep.gt.(commenc+1)) then
+      count=count+1
+      endif
+
+
+      print *, "normx", NORM2(snapx)
+      print *, "normy", NORM2(snapy)
+
+      if (istep.ge.commenc+1) then
+      print *, "subroutine stream dmd has started successfully"
+      call streaming_dmd(snapx,snapy)
+      print *, "subroutine streaming dmd called successfully"
+      endif
+
+      do j=1,ntots
+       snapx(j,1)=snapy(j,1)
+      enddo
+
+       endif      ! end of nid.eq.0 condition
+
+
+      endif      ! end of time-step condition
+
+
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat()   ! This routine to modify element vertices
+      include 'SIZE'
+      include 'TOTAL'
+
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat2()
+      include 'SIZE'
+      include 'TOTAL'
+
+
+
+
+      do iel=1,nelv
+      do ifc=1,2*ndim
+        id_face = bc(5,ifc,iel,1)
+
+        if(id_face.eq.7)then
+        cbc(ifc,iel,1)='W  '
+        end if
+      enddo
+      enddo
+
+
+c      open (unit=20,file='data_file.txt',status='old')
+c      write(20,*) "The size of array cbc is", shape(cbc)
+c      do i=1,2503
+c      write(20,*) "cbc array", cbc(:,i,:)
+c      enddo
+c      close(20)
+
+c--------The �1� in the arrays cbc and bc is for the velocity field.
+C--------If you use the same approach for the temperature equation, you will have the
+c--------replace �1� with �2� which corresponds to the temperature field.
+c--------nelv: number of elements in velocity mesh
+c--------nelt: number of elements in t mesh
+
+
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat3()
+      include 'SIZE'
+      include 'TOTAL'
+
+
+      param(54)=-1
+      param(55)=0.002
+
+
+
+      return
+      end
+
+c-----------------------------------------------------------------------
+      subroutine streaming_dmd(x,y)
+      include 'SIZE'
+      include 'TOTAL'
+
+      real*8 x(linterpol*ldim,1),y(linterpol*ldim,1)
+      integer rmax,nodestot,ntots,count
+      PARAMETER(ntots=linterpol*ldim)
+      PARAMETER(rmax=12)
+      real*8 gbl_Qx(ntots,rmax),gbl_Qy(ntots,rmax),gbl_A(ntots,rmax)
+      real*8 gbl_Gx(rmax,rmax),gbl_Gy(rmax,rmax)
+      real*8,ALLOCATABLE::Qx(:,:),Qy(:,:),ex(:,:),ey(:,:)
+      real*8,ALLOCATABLE::work(:,:),work2(:)
+      real*8,ALLOCATABLE::Gx(:,:),Gy(:,:),dx(:,:),dy(:,:)
+      real*8,ALLOCATABLE::xtilde(:,:),ytilde(:,:)
+
+
+      real normx,normy,normex,normey
+
+
+      integer rw_size(2),j,k,ngram,size_xtilde(2),size_ytilde(2)
+      real*8 epsilon,test_var
+c      PARAMETER (epsilon=0.999999881)
+      PARAMETER (epsilon=2.2204e-8)
+c      PARAMETER (epsilon=2^-52)
+      integer size_qx(2),size_qy(2),size_gx(2),size_gy(2)
+      integer size_a(2)
+      integer size_x(2),size_y(2)
+      integer N,LWMAX,LDA,LWORK,INFO,r
+      character*1 JOBZ,UPLO,SORTID
+      REAL*8,ALLOCATABLE:: A(:,:),W(:),WORK1(:),A_eig(:,:)
+      REAL*8,ALLOCATABLE :: store_qx(:,:),store_qy(:,:)
+      INTEGER,ALLOCATABLE :: rinf(:)
+      integer sh_Qx(2),sh_Qy(2),sh_A(2),sh_Gx(2),sh_Gy(2)
+
+
+
+
+      common /dmd_count/ count
+      SAVE gbl_Qx,gbl_Qy,gbl_A,gbl_Gx,gbl_Gy
+      SAVE sh_Qx,sh_Qy,sh_A,sh_Gx,sh_Gy
+
+
+      print *,"streaming dmd started & count value is",count
+      print *, "The tolerance Epsilon is", epsilon
+
+      test_var=1
+c      print *, TINY(test_var)
+c      print *,eps
+
+      if (count.eq.1) then
+
+      do j=1,ntots
+        do k=1,rmax
+          gbl_Qx(j,k)=0                !Flushing the global arrays
+          gbl_Qy(j,k)=0               !They are saved for later reference
+          gbl_A(j,k)=0
+        enddo                         ! Hence, periodic flushing is not required
+      enddo
+
+      do j=1,rmax
+       do k=1,rmax
+          gbl_Gx(j,k)=0
+          gbl_Gy(j,k)=0
+       enddo
+      enddo
+
+      print *, "First step of DMD process"
+      allocate(Qx(ntots,1))
+      allocate(Qy(ntots,1))
+      allocate(Gx(1,1))
+      allocate(Gy(1,1))
+      allocate(A(1,1))
+
+      allocate(work2(ntots))
+      do j=1,ntots
+         work2(j)=x(j,1)
+      enddo
+      normx=NORM2(work2)
+      do j=1,ntots
+         work2(j)=y(j,1)
+      enddo
+      normy=NORM2(work2)
+      deallocate(work2)
+
+      Qx=x/normx
+      Qy=y/normy
+      Gx(1,1)=normx*normx
+      Gy(1,1)=normy*normy
+      A(1,1)=normx*normy
+
+
+      sh_Qx=shape(Qx)
+      sh_Qy=shape(Qy)
+      sh_Gx=shape(Gx)
+      sh_Gy=shape(Gy)
+      sh_A=shape(A)
+
+      do j=1,ntots
+      gbl_Qx(j,1)=Qx(j,1)
+      gbl_Qy(j,1)=Qy(j,1)
+      enddo
+
+
+c      print *, "gbl_Gx"
+c      print *, gbl_Gx
+c      print *, "gbl_Gy"
+c      print *, gbl_Gy
+c      print *, "A", A
+
+      gbl_A(1,1)=A(1,1)
+      gbl_Gx(1,1)=Gx(1,1)
+      gbl_Gy(1,1)=Gy(1,1)
+
+c      print *, "gbl_Gx"
+c      print *, gbl_Gx
+c      print *, "gbl_Gy"
+c      print *, gbl_Gy
+
+      endif
+
+
+      if (count.gt.1) then
+
+      print *, "Gx", sh_Gx
+      print *, "Qx", sh_Qx
+      print *, "Qy", sh_Qy
+      print *, "gbl_Gx", shape(gbl_Gx)
+
+
+
+      allocate(Qx(sh_Qx(1),sh_Qx(2)))
+      allocate(Qy(sh_Qy(1),sh_Qy(2)))
+      allocate(A(sh_A(1),sh_A(2)))
+      allocate(Gx(sh_Gx(1),sh_Gx(2)))
+      allocate(Gy(sh_Gy(1),sh_Gy(2)))
+
+      print *, "Basic allocation successful"
+
+      do j=1,sh_Qx(1)
+        do k=1,sh_Qx(2)
+           Qx(j,k)=gbl_Qx(j,k)
+        enddo
+      enddo
+
+      do j=1,sh_Qy(1)
+        do k=1,sh_Qy(2)
+           Qy(j,k)=gbl_Qy(j,k)
+        enddo
+      enddo
+
+      do j=1,sh_A(1)
+        do k=1,sh_A(2)
+           A(j,k)=gbl_A(j,k)
+        enddo
+      enddo
+
+      do j=1,sh_Gx(1)
+        do k=1,sh_Gx(2)
+           Gx(j,k)=gbl_Gx(j,k)
+        enddo
+      enddo
+
+      do j=1,sh_Gy(1)
+        do k=1,sh_Gy(2)
+           Gy(j,k)=gbl_Gy(j,k)
+        enddo
+      enddo
+
+      size_qx=shape(Qx)
+      size_qy=shape(Qy)
+      size_gx=shape(Gx)
+      size_a=sh_A
+
+      print *, "allocation of xtilde,ytilde, ex,ey begins"
+      allocate (xtilde(size_qx(2),1))
+      allocate (ytilde(size_qy(2),1))
+      allocate (ex(ntots,1))
+      allocate (ey(ntots,1))
+      allocate(dx(size_qx(2),1))
+      allocate(dy(size_qy(2),1))
+
+      print *, "allocation of xtilde,ytilde,ex,ey successful"
+
+      !Flush x tilde and y tilde
+      size_xtilde=shape(xtilde)
+      do j=1,size_xtilde(1)
+         do k=1,size_xtilde(2)
+             xtilde(j,k)=0
+         enddo
+      enddo
+
+      size_ytilde=shape(ytilde)
+      do j=1,size_ytilde(1)
+         do k=1,size_ytilde(2)
+             ytilde(j,k)=0
+         enddo
+      enddo
+
+      print *, "Grahm Schidmt started successfully"
+      do j=1,ntots
+      ex(j,1)=x(j,1)
+      ey(j,1)=y(j,1)
+      enddo
+      ngram=5
+      do j=1,ngram
+          dx=MATMUL(TRANSPOSE(Qx),ex)
+          dy=MATMUL(TRANSPOSE(Qy),ey)
+          xtilde=xtilde+dx
+          ytilde=ytilde+dy
+          ex=ex-MATMUL(Qx,dx)
+          ey=ey-MATMUL(Qy,dy)
+       enddo
+
+c      open(unit=20,file='grahm-sch.dat',status='replace')
+c      do j=1,ntots
+c        write(20,*) ex(j,1), ey(j,1)
+c      enddo
+c      close(20)
+
+
+      print *, "Grahm Schidmt ended successfully"
+
+      deallocate(xtilde)
+      deallocate(ytilde)
+      deallocate(dx)
+      deallocate(dy)
+
+
+      normx=NORM2(x)
+      normy=NORM2(y)
+      normex=NORM2(ex)
+      normey=NORM2(ey)
+
+      print *, "normex", normex
+      print *, "normx", normx
+      print *, "normex/normx", normex/normx
+
+      if ((normex/normx).gt.epsilon) then
+      allocate(work(size_qx(1),size_qx(2)+1))
+      print *, "Adding bases to Qx started successfully"
+c      normex=NORM2(ex)
+
+      do j=1,size_qx(1)
+          do k=1,size_qx(2)
+              work(j,k)=Qx(j,k)
+          enddo
+      enddo
+
+      do j=1,size_qx(1)
+          k=size_qx(2)+1
+          work(j,k)=ex(j,1)/normex
+
+      enddo
+
+      deallocate(Qx)
+      allocate(Qx(size_qx(1),size_qx(2)+1))
+
+      do j=1,size_qx(1)
+         do k=1,size_qx(2)+1
+              Qx(j,k)=work(j,k)
+         enddo
+      enddo
+
+      deallocate(work)
+      allocate(work(size_gx(1)+1,size_gx(2)+1))
+
+      do j=1,size_gx(1)
+        do k=1,size_gx(2)
+             work(j,k)=Gx(j,k)
+        enddo
+      enddo
+
+      deallocate(Gx)
+      allocate(Gx(size_gx(1)+1,size_gx(2)+1))
+
+      do j=1,size_gx(1)+1
+        do k=1,size_gx(2)+1
+            Gx(j,k)=0
+        enddo
+      enddo
+
+      do j=1,size_gx(1)
+        do k=1,size_gx(2)
+            Gx(j,k)=work(j,k)
+        enddo
+      enddo
+
+      deallocate(work)
+      size_a=shape(A)
+      allocate(work(size_a(1)+1,size_a(2)+1))
+
+      do j=1,size_a(1)
+        do k=1,size_a(2)
+            work(j,k)=A(j,k)
+        enddo
+      enddo
+
+      deallocate(A)
+      allocate(A(size_a(1),size_a(2)+1))
+
+      do j=1,size_a(1)
+        do k=1,size_a(2)+1
+            A(j,k)=0
+        enddo
+      enddo
+
+      do j=1,size_a(1)
+        do k=1,size_a(2)
+            A(j,k)=work(j,k)
+        enddo
+      enddo
+      deallocate(work)
+
+      print *, "Adding bases to Qx finished successfully"
+      endif
+
+
+      if ((normey/normy).gt.epsilon) then
+      allocate(work(size_qy(1),size_qy(2)+1))
+      print *, "Adding bases to Qy started successfully"
+
+c      normey=NORM2(ey)
+
+      do j=1,size_qy(1)
+          do k=1,size_qy(2)
+              work(j,k)=Qy(j,k)
+          enddo
+      enddo
+
+      do j=1,size_qy(1)
+          k=size_qy(2)+1
+          work(j,k)=ey(j,1)/normey
+
+      enddo
+
+      deallocate(Qy)
+      allocate(Qy(size_qy(1),size_qy(2)+1))
+
+      do j=1,size_qy(1)
+         do k=1,size_qy(2)+1
+              Qy(j,k)=work(j,k)
+         enddo
+      enddo
+
+      deallocate(work)
+      size_gy=shape(Gy)
+      allocate(work(size_gy(1)+1,size_gy(2)+1))
+
+      do j=1,size_gy(1)
+        do k=1,size_gy(2)
+             work(j,k)=Gy(j,k)
+        enddo
+      enddo
+
+      deallocate(Gy)
+      print *, "Reached to deallocating Gy"
+      allocate(Gy(size_gy(1)+1,size_gy(2)+1))
+
+      do j=1,size_gy(1)+1
+        do k=1,size_gy(2)+1
+            Gy(j,k)=0
+        enddo
+      enddo
+
+      do j=1,size_gy(1)
+        do k=1,size_gy(2)
+            Gy(j,k)=work(j,k)
+        enddo
+      enddo
+
+      deallocate(work)
+      size_a=shape(A)
+      allocate(work(size_a(1)+1,size_a(2)+1))
+
+      do j=1,size_a(1)
+        do k=1,size_a(2)
+            work(j,k)=A(j,k)
+        enddo
+      enddo
+
+      deallocate(A)
+      allocate(A(size_a(1)+1,size_a(2)))
+
+      do j=1,size_a(1)+1
+        do k=1,size_a(2)
+            A(j,k)=0
+        enddo
+      enddo
+
+      do j=1,size_a(1)
+        do k=1,size_a(2)
+            A(j,k)=work(j,k)
+        enddo
+      enddo
+      print *, "Adding bases to Qy finished successfully"
+      endif              !end of expanding bases procedure
+
+
+      ! rmax=max. rank
+
+      size_qx=shape(Qx)
+      size_qy=shape(Qy)
+
+      if (size_qx(2).gt.rmax) then
+      print *, "Truncation process of Gx started successful"
+      size_gx=shape(Gx)
+
+c      open(unit=20,file='Qx_count_6.dat',status='replace')
+c      do j=1,size_qx(1)
+c        write(20,*) Qx(j,:)
+c      enddo
+c      close(20)
+
+c      open(unit=20,file='Gx_count_6.dat',status='replace')
+c      do j=1,size_Gx(1)
+c        write(20,*) Gx(j,:)
+c      enddo
+c      close(20)
+
+      JOBZ='V'         !Declare as character 1
+      UPLO='U'         ! Declare
+      N=size_gx(1)     !declare N as Integer
+      LDA=max(1,N)    !Declare integer
+      LWMAX=max(1,3*N-1)   !Declare LWMAX
+      ALLOCATE(W(N))    !Double precision allocatable array
+      ALLOCATE(A_eig(LDA,N))
+      ALLOCATE(WORK1(LWMAX))
+c      DEALLOCATE(W)
+      print *, "The size of Gx is", N
+      do j=1,N
+         do k=1,N
+            A_eig(k,j)=0
+         enddo
+      enddo
+
+      do j=1,N
+        do k=1,j
+           A_eig(k,j)=Gx(k,j)
+        enddo
+      enddo
+
+
+c      open(unit=20,file='A_eig_before.dat',status='replace')
+c      do j=1,N
+c        write(20,*) A_eig(j,:)
+c      enddo
+c      close(20)
+
+
+
+      LWORK = -1
+      CALL DSYEV( JOBZ,UPLO, N, A_eig, LDA, W, WORK1, LWORK, INFO )
+      LWORK = MIN( LWMAX, INT( WORK1( 1 ) ) )
+      DEALLOCATE(WORK1)
+      ALLOCATE(WORK1(LWORK))
+      CALL DSYEV( JOBZ,UPLO, N, A_eig, LDA, W, WORK1, LWORK, INFO )
+
+c     Check for convergence.
+
+      IF( INFO.GT.0 ) THEN
+         WRITE(*,*)'The algorithm failed to compute eigenvalues.'
+         STOP
+      END IF
+
+
+
+c      open(unit=20,file='A_eig_after.dat',status='replace')
+c      do j=1,N
+c        write(20,*) A_eig(j,:)
+c      enddo
+c      close(20)
+
+
+      do j=1,N
+         WORK1(j)=W(j)
+      enddo
+
+      SORTID='D'
+      CALL DLASRT(SORTID,N,W,INFO)
+
+      ALLOCATE(rinf(N))
+      do j=1,N
+        do k=1,N
+          if (W(j).eq.WORK1(k)) then
+             rinf(j)=k
+          endif
+        enddo
+      enddo
+
+      ALLOCATE(store_qx(LDA,rmax))
+
+      do j=1,LDA
+         do k=1,rmax
+            store_qx(j,k)=0
+         enddo
+      enddo
+
+c      open(unit=20,file='store_qx_before.dat',status='replace')
+c      do j=1,N
+c        write(20,*) store_qx(j,:)
+c      enddo
+c      close(20)
+
+
+      do j=1,rmax
+          r=rinf(j)
+          do k=1,LDA
+            store_qx(k,j)=A_eig(k,r)
+          enddo
+      enddo
+
+c      open(unit=20,file='store_qx.dat',status='replace')
+c      do j=1,N
+c        write(20,*) store_qx(j,:)
+c      enddo
+c      close(20)
+
+
+      print *, "The shape of Qx before matmul", shape(Qx)
+      print *, "The shape of store_Qx before matmul", shape(store_Qx)
+      Qx=MATMUL(Qx,store_qx)
+      print *, "MatMUl 1 successful"
+      print *, "The dimension of A before MATMUL is", shape(A)
+      print *, "The shape of store_qx before MATMUL", shape(store_qx)
+      A=MATMUL(A,store_qx)
+      deallocate(Gx)
+      allocate(Gx(rmax,rmax))
+
+      do j=1,rmax
+        do k=1,rmax
+           Gx(j,k)=0
+        enddo
+      enddo
+
+      do j=1,rmax
+           r=rinf(j)
+        Gx(j,j)=WORK1(r)
+      enddo
+
+      DEALLOCATE(W)
+      DEALLOCATE(A_eig)
+      DEALLOCATE(WORK1)
+      DEALLOCATE(store_qx)
+      DEALLOCATE(rinf)
+
+      endif         !end of rank truncation step for Qx
+
+      if (size_qy(2).gt.rmax) then
+      print *, "Truncation process for Qy started successfully"
+      size_gy=shape(Gy)
+      JOBZ='V'         !Declare as character 1
+      UPLO='U'         ! Declare
+      N=size_gy(1)     !declare N as Integer
+      LDA=max(1,N)    !Declare integer
+      LWMAX=max(1,3*N-1)   !Declare LWMAX
+      ALLOCATE(W(N))    !Double precision allocatable array
+      ALLOCATE(A_eig(LDA,N))
+      ALLOCATE(WORK1(LWMAX))
+
+
+      do j=1,N
+         do k=1,N
+            A_eig(k,j)=0
+         enddo
+      enddo
+
+      do j=1,N
+        do k=1,j
+           A_eig(k,j)=Gy(k,j)
+        enddo
+      enddo
+
+      LWORK = -1
+      CALL DSYEV( JOBZ,UPLO, N, A_eig, LDA, W, WORK1, LWORK, INFO )
+      LWORK = MIN( LWMAX, INT( WORK1( 1 ) ) )
+      DEALLOCATE(WORK1)
+      ALLOCATE(WORK1(LWORK))
+      CALL DSYEV( JOBZ,UPLO, N, A_eig, LDA, W, WORK1, LWORK, INFO )
+
+c     Check for convergence.
+
+      IF( INFO.GT.0 ) THEN
+         WRITE(*,*)'The algorithm failed to compute eigenvalues.'
+         STOP
+      END IF
+
+      do j=1,N
+         WORK1(j)=W(j)
+      enddo
+
+      SORTID='D'
+      CALL DLASRT(SORTID,N,W,INFO)
+
+      ALLOCATE(rinf(N))
+      do j=1,N
+        do k=1,N
+          if (W(j).eq.WORK1(k)) then
+             rinf(j)=k
+          endif
+        enddo
+      enddo
+
+      ALLOCATE(store_qy(LDA,rmax))
+
+      do j=1,LDA
+         do k=1,rmax
+            store_qy (j,k)=0
+         enddo
+      enddo
+
+      do j=1,rmax
+        r=rinf(j)
+          do k=1,LDA
+            store_qy(k,j)=A_eig(k,r)
+          enddo
+      enddo
+
+      print *,"Shape of Qy before MATMUl", shape(Qy)
+      print *, "Size of A before matmul", shape(A)
+      print *, "Size of store_qy bf matmul", shape(store_qy)
+      Qy=MATMUL(Qy,store_qy)
+
+      A=MATMUL(TRANSPOSE(store_qy),A)
+      deallocate(Gy)
+      allocate(Gy(rmax,rmax))
+
+      do j=1,rmax
+        do k=1,rmax
+           Gy(j,k)=0
+        enddo
+      enddo
+
+
+      do j=1,rmax
+         r=rinf(j)
+        Gy(j,j)=WORK1(r)
+      enddo
+
+      DEALLOCATE(W)
+      DEALLOCATE(A_eig)
+      DEALLOCATE(WORK1)
+      DEALLOCATE(store_qy)
+      DEALLOCATE(rinf)
+
+      endif         !end of rank truncation step for Qy
+
+
+      size_qx=shape(Qx)
+      size_x=shape(x)
+      size_qy=shape(Qy)
+      size_y=shape(y)
+      allocate(xtilde(size_qx(2),size_x(2)))
+      allocate(ytilde(size_qy(2),size_y(2)))
+
+      xtilde=MATMUL(TRANSPOSE(Qx),x)
+      ytilde=MATMUL(TRANSPOSE(Qy),y)
+
+      A=A+MATMUL(ytilde,TRANSPOSE(xtilde))
+      Gx=Gx+MATMUL(xtilde,TRANSPOSE(xtilde))
+      Gy=Gy+MATMUL(ytilde,TRANSPOSE(ytilde))
+
+      size_A=shape(A)
+      size_Gx=shape(Gx)
+      size_Gy=shape(Gy)
+
+      do j=1,size_A(1)
+         do k=1,size_A(2)
+             gbl_A(j,k)=A(j,k)
+          enddo
+      enddo
+
+      do j=1,size_Gx(1)
+         do k=1,size_Gx(2)
+             gbl_Gx(j,k)=Gx(j,k)
+          enddo
+      enddo
+
+      do j=1,size_Gy(1)
+         do k=1,size_Gy(2)
+             gbl_Gy(j,k)=Gy(j,k)
+          enddo
+      enddo
+
+      do j=1,size_Qx(1)
+         do k=1,size_Qx(2)
+             gbl_Qx(j,k)=Qx(j,k)
+          enddo
+      enddo
+
+      do j=1,size_Qy(1)
+         do k=1,size_Qy(2)
+             gbl_Qy(j,k)=Qy(j,k)
+          enddo
+      enddo
+
+      sh_Qx=shape(Qx)
+      sh_Qy=shape(Qy)
+      sh_A=shape(A)
+      sh_Gx=shape(Gx)
+      sh_Gy=shape(Gy)
+
+      print *, "Qx", sh_Qx, "Qy", sh_Qy, "A", sh_A
+      print *, "Gx", sh_Gx, "Gy", sh_Gy
+
+      endif   ! end of (count.gt.1)
+
+c-----------------Writing DMD Summary--------------------
+
+      if (mod(istep,100).eq.0) then
+
+      open(unit=20,file='A.dat',status='replace')
+      do j=1,sh_A(1)
+        write(20,*) A(j,:)
+      enddo
+      close(20)
+
+      open(unit=20,file='Qx.dat',status='replace')
+      do j=1,sh_Qx(1)
+        write(20,*) Qx(j,:)
+      enddo
+      close(20)
+
+      open(unit=20,file='Qy.dat',status='replace')
+      do j=1,sh_Qy(1)
+        write(20,*) Qy(j,:)
+      enddo
+      close(20)
+
+      open(unit=20,file='Gx.dat',status='replace')
+      do j=1,sh_Gx(1)
+        write(20,*) Gx(j,:)
+      enddo
+      close(20)
+
+      open(unit=20,file='dmd_summary.dat',status='replace')
+      write(20,*)   "istep",istep
+      write (20,*)  "count", count
+      write(20,*)   "Size of Qx", sh_Qx
+      write(20,*)   "Size of Qy", sh_Qy
+      write(20,*)   "Size of Gx", sh_Gx
+      close(20)
+
+      endif
+
+
+
+
+
+      return
+      end
