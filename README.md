@@ -46,7 +46,7 @@ Outputs:
      istep file is periodically written at a time interval of 1000 timesteps after commenc.
      Ground truth velocities are stored and saved in istep file so that the DMD predicted velocities can be later compared for accuracy.
 
- Run the matlab code 'dmd_fortran.m' to finish the last step in the alfgorithm and construct the DMD modes and Eigenvalues. 
+ Run the matlab code 'dmd_fortran.m' to finish the last step of the algorithm and construct the DMD modes and Eigenvalues. 
 
 
 
